@@ -33,24 +33,30 @@ func main() {
 	proxy := goproxy.NewProxyHttpServer()
 	ips := make(map[string]int64)
 
-	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		ip, _, err := net.SplitHostPort(req.RemoteAddr)
-		if err == nil {
-			ips[ip] = time.Now().Unix()
-		}
-		return req, nil
-	})
+	if os.Getenv("IPTRACKER") != "" && os.Getenv("IPTRACKER") != "0" {
+		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+			ip, _, err := net.SplitHostPort(req.RemoteAddr)
+			if err == nil {
+				ips[ip] = time.Now().Unix()
+			}
+			return req, nil
+		})
 
-	proxy.NonproxyHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		l := make([]entry, 0, len(ips))
-		for k, v := range ips {
-			l = append(l, entry{k, v})
-		}
-		sort.Sort(byTime(l))
-		for _, e := range l {
-			fmt.Fprintf(w, "%s: %s\n", e.ip, time.Unix(e.time, 0).Format(time.RFC850))
-		}
-	})
+		proxy.NonproxyHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			l := make([]entry, 0, len(ips))
+			for k, v := range ips {
+				l = append(l, entry{ip: k, time: v})
+			}
+			sort.Sort(byTime(l))
+			for _, e := range l {
+				fmt.Fprintf(w, "%s: %s\n", e.ip, time.Unix(e.time, 0).Format(time.RFC850))
+			}
+		})
+	} else {
+		proxy.NonproxyHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			fmt.Fprint(w, "Gtfo of here man!")
+		})
+	}
 
 	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), proxy))
 }
